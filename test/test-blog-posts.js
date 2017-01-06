@@ -7,10 +7,9 @@ const mongoose = require('mongoose');
 // this module
 const should = chai.should();
 
-const {DATABASE_URL} = require('../config');
-const {BlogPost} = require('../models');
+const {DATABASE_URL, TEST_DATABASE_URL} = require('../config');
+const {BlogPost, User} = require('../models');
 const {closeServer, runServer, app} = require('../server');
-const {TEST_DATABASE_URL} = require('../config');
 
 chai.use(chaiHttp);
 
@@ -50,6 +49,18 @@ function seedBlogPostData() {
   return BlogPost.insertMany(seedData);
 }
 
+let authenticatedUser = {
+  username: faker.internet.userName(),
+  firstName: faker.name.firstName(),
+  lastName: faker.name.lastName(),
+  password: '$2a$10$KGXCCe2qeX7E5D7sVKN9Me1zFc/as7OHob8i64ltJsgAT5ZTzLfYu',
+  clearPassword: 'Th1nkful123'
+};
+
+function seedUser() {
+  return User.create(authenticatedUser);
+}
+
 
 describe('blog posts API resource', function() {
 
@@ -58,7 +69,7 @@ describe('blog posts API resource', function() {
   });
 
   beforeEach(function() {
-    return seedBlogPostData();
+    return Promise.all([seedUser(), seedBlogPostData()]);
   });
 
   afterEach(function() {
@@ -139,15 +150,12 @@ describe('blog posts API resource', function() {
 
       const newPost = {
           title: faker.lorem.sentence(),
-          author: {
-            firstName: faker.name.firstName(),
-            lastName: faker.name.lastName(),
-          },
           content: faker.lorem.text()
       };
 
       return chai.request(app)
         .post('/posts')
+        .auth(authenticatedUser.username, authenticatedUser.clearPassword)
         .send(newPost)
         .then(function(res) {
           res.should.have.status(201);
@@ -159,16 +167,16 @@ describe('blog posts API resource', function() {
           // cause Mongo should have created id on insertion
           res.body.id.should.not.be.null;
           res.body.author.should.equal(
-            `${newPost.author.firstName} ${newPost.author.lastName}`);
+            `${authenticatedUser.firstName} ${authenticatedUser.lastName}`);
           res.body.content.should.equal(newPost.content);
           return BlogPost.findById(res.body.id).exec();
         })
         .then(function(post) {
           post.title.should.equal(newPost.title);
           post.content.should.equal(newPost.content);
-          post.author.firstName.should.equal(newPost.author.firstName);
-          post.author.lastName.should.equal(newPost.author.lastName);
-        });
+          post.author.firstName.should.equal(authenticatedUser.firstName);
+          post.author.lastName.should.equal(authenticatedUser.lastName);
+        })
     });
   });
 
@@ -182,21 +190,19 @@ describe('blog posts API resource', function() {
     it('should update fields you send over', function() {
       const updateData = {
         title: 'cats cats cats',
-        content: 'dogs dogs dogs',
-        author: {
-          firstName: 'foo',
-          lastName: 'bar'
-        }
+        content: 'dogs dogs dogs'
       };
 
+      let oldPost;
       return BlogPost
         .findOne()
         .exec()
         .then(post => {
+          oldPost = post;
           updateData.id = post.id;
-
           return chai.request(app)
-            .put(`/posts/${post.id}`)
+            .put(`/posts/${oldPost.id}`)
+            .auth(authenticatedUser.username, authenticatedUser.clearPassword)
             .send(updateData);
         })
         .then(res => {
@@ -205,7 +211,7 @@ describe('blog posts API resource', function() {
           res.body.should.be.a('object');
           res.body.title.should.equal(updateData.title);
           res.body.author.should.equal(
-            `${updateData.author.firstName} ${updateData.author.lastName}`);
+            `${oldPost.author.firstName} ${oldPost.author.lastName}`);
           res.body.content.should.equal(updateData.content);
 
           return BlogPost.findById(res.body.id).exec();
@@ -213,8 +219,8 @@ describe('blog posts API resource', function() {
         .then(post => {
           post.title.should.equal(updateData.title);
           post.content.should.equal(updateData.content);
-          post.author.firstName.should.equal(updateData.author.firstName);
-          post.author.lastName.should.equal(updateData.author.lastName);
+          post.author.firstName.should.equal(oldPost.author.firstName);
+          post.author.lastName.should.equal(oldPost.author.lastName);
         });
     });
   });
@@ -234,7 +240,9 @@ describe('blog posts API resource', function() {
         .exec()
         .then(_post => {
           post = _post;
-          return chai.request(app).delete(`/posts/${post.id}`);
+          return chai.request(app)
+          .delete(`/posts/${post.id}`)
+          .auth(authenticatedUser.username, authenticatedUser.clearPassword)
         })
         .then(res => {
           res.should.have.status(204);
