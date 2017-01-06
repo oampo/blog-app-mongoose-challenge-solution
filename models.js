@@ -36,11 +36,10 @@ const UserSchema = mongoose.Schema({
     required: true,
     unique: true
   },
-  hashedPassword: {
+  password: {
     type: String,
     required: true
   },
-  clearPassword: {type: String},
   firstName: {type: String, default: ""},
   lastName: {type: String, default: ""}
 });
