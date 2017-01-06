@@ -7,10 +7,9 @@ const mongoose = require('mongoose');
 // this module
 const should = chai.should();
 
-const {DATABASE_URL} = require('../config');
-const {BlogPost} = require('../models');
+const {DATABASE_URL, TEST_DATABASE_URL} = require('../config');
+const {BlogPost, User} = require('../models');
 const {closeServer, runServer, app} = require('../server');
-const {TEST_DATABASE_URL} = require('../config');
 
 chai.use(chaiHttp);
 
@@ -50,6 +49,18 @@ function seedBlogPostData() {
   return BlogPost.insertMany(seedData);
 }
 
+let newUser = {
+  username: faker.internet.userName(),
+  firstName: faker.name.firstName(),
+  lastName: faker.name.lastName(),
+  hashedPassword: '$2a$10$KGXCCe2qeX7E5D7sVKN9Me1zFc/as7OHob8i64ltJsgAT5ZTzLfYu',
+  clearPassword: 'Th1nkful123'
+};
+
+function seedUser() {
+  return User.create(newUser);
+}
+
 
 describe('blog posts API resource', function() {
 
@@ -58,7 +69,7 @@ describe('blog posts API resource', function() {
   });
 
   beforeEach(function() {
-    return seedBlogPostData();
+    return Promise.all([seedUser(), seedBlogPostData()]);
   });
 
   afterEach(function() {
@@ -146,8 +157,18 @@ describe('blog posts API resource', function() {
           content: faker.lorem.text()
       };
 
+      return User.findOne()
+      .exec()
+      .then(user => {
+        console.log('userObject:', user);
+        console.log('userclearPass:', user.clearPassword);
+        let username = user.username;
+        console.log('USERNAME:', username);
+        let password = user.clearPassword;
+
       return chai.request(app)
         .post('/posts')
+        .auth(username, password)
         .send(newPost)
         .then(function(res) {
           res.should.have.status(201);
@@ -169,6 +190,7 @@ describe('blog posts API resource', function() {
           post.author.firstName.should.equal(newPost.author.firstName);
           post.author.lastName.should.equal(newPost.author.lastName);
         });
+      })
     });
   });
 
